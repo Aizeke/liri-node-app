@@ -1,105 +1,178 @@
 // ======== Require Packages ==============
 require("dotenv").config();
 
-var fs = require('fs');
-var keys = require("./keys.js");
 var axios = require('axios');
 var Spotify = require('node-spotify-api');
-// var inquirer = require("inquirer");
-
+var keys = require("./keys");
+var fs = require('fs');
+var inquirer = require("inquirer");
 // ======== Variables To Use ==============
 
-var spotify = new Spotify(keys.Spotify);
-console.log(spotify);
-var command = process.argv[2];
-var answer = process.argv.slice(3).join(' ');
-
-var spotifyThis = function () {
-    if (answer === '') answer = 'The Sign';
-
-    spotify.search({type: 'track', query: answer})
-    .then(function(spotifyResp) {
-        console.log(spotifyResp);
-    })
-    .catch(function(err){
-        console.log(err);
-    });
-}
-
-var movieThis = function () {
-
-    if (answer === '') {
-        answer = 'Mr. Nobody';
-    }
-
-    axios.get('http://www.omdbapi.com/?t=' + answer + '&apikey=1de8dab0')
-        .then(function (OMDBResponse) {
-            var data = OMDBResponse.data;
-
-            var text = 'Movie Title: ' + data.Title + '\n' +
-                'Released: ' + data.Released + '\n' +
-                'imdbRating: ' + data.imdbRating + '\n' +
-                data.Ratings[1].Source + ': ' + data.Ratings[1].Value + '\n' +
-                'Country Produced: ' + data.Country + '\n' +
-                'Language: ' + data.Language + '\n' +
-                'Plot: ' + data.Plot + '\n' +
-                'Actors: ' + data.Actors + '\n\n';
-
-            fs.appendFile('./log.txt', text, function (err) {
-                if (err) return console.error(err);
-
-                console.log('Appending to log');
-            })
-        })
-        .catch(function (error) {
-            if (error.response) {
-                // The request was made and the server responded with a status code
-                // that falls out of the range of 2xx
-                console.log("---------------Data---------------");
-                console.log(error.response.data);
-                console.log("---------------Status---------------");
-                console.log(error.response.status);
-                console.log("---------------Status---------------");
-                console.log(error.response.headers);
-            } else if (error.request) {
-                // The request was made but no response was received
-                // `error.request` is an object that comes back with details pertaining to the error that occurred.
-                console.log(error.request);
-            } else {
-                // Something happened in setting up the request that triggered an Error
-                console.log("Error", error.message);
+var start = function () {
+    inquirer
+        .prompt([
+            {
+                type: 'list',
+                message: "Want a Movie or a Song? or other",
+                choices: ["Movie?", "Song?", "Do What It Says"],
+                name: 'answer'
             }
-            console.log(error.config);
-        });
+        ])
+        .then(function (inquirerRes) {
+            if (inquirerRes.answer === "Movie?") {
+                getMovie();
+            } else if (inquirerRes.answer === "Song?") {
+                getSong();
+            } else {
+                doWhatItSays();
+            }
+        })
 }
 
-var doSomethingElse = function () {
+var runAgain = function () {
+    inquirer.prompt([
+        {
+            type: "confirm",
+            message: "Would you like to search for a new entry?",
+            name: "answer"
+        }
+    ])
+        .then(function (res) {
+            if (res.answer) {
+                start();
+            } else {
+                process.exit(200)
+            }
+        })
+}
 
+var doWhatItSays = function () {
     fs.readFile('./random.txt', 'utf8', function (err, data) {
         if (err) return console.error(err);
 
         var randtxt = data.split(',');
 
-        if(randtxt[0] === 'movie-this'){
-            answer = randtxt[1];
-            movieThis();
+        var answer = randtxt[1];
+
+        if (randtxt[0] === 'movie-this') {
+
+            axios.get('http://www.omdbapi.com/?t=' + answer + '&apikey=1de8dab0')
+                .then(function (OMDBres) {
+                    var movie = OMDBres.data;
+                    console.log(`${movie.Title}\n${movie.Released}\n${movie.imdbRating}\n${movie.Country}\n${movie.Language}\n${movie.Plot}\n${movie.Actors}\n`);
+                    runAgain();
+                })
+                .catch(function (error) {
+                    if (error.response) {
+                        // The request was made and the server responded with a status code
+                        // that falls out of the range of 2xx
+                        console.log("---------------Data---------------");
+                        console.log(error.response.data);
+                        console.log("---------------Status---------------");
+                        console.log(error.response.status);
+                        console.log("---------------Status---------------");
+                        console.log(error.response.headers);
+                    } else if (error.request) {
+                        // The request was made but no response was received
+                        // `error.request` is an object that comes back with details pertaining to the error that occurred.
+                        console.log(error.request);
+                    } else {
+                        // Something happened in setting up the request that triggered an Error
+                        console.log("Error", error.message);
+                    }
+                    console.log(error.config);
+
+                })
         } else {
-            answer === randtxt[1];
-            spotifyThis();
+
+            spotify.search({ type: 'track', query: answer, limit: 1 })
+                .then(function (spotifyRes) {
+                    var song = spotifyRes.tracks.items[0];
+
+                    console.log(`Artist: ${song.album.artists[0].name}\nSong: ${song.name}\nOpen in Spotify: ${song.album.external_urls.spotify}\nAlbum: ${song.album.name}\n`);
+
+                    runAgain();
+                })
+                .catch(function (err) {
+                    if (err) throw err;
+                });
         }
     })
 }
 
-switch (command) {
-    case 'spotify-this-song':
-        spotifyThis();
-        break;
-    case 'movie-this':
-        movieThis();
-        break;
-    case 'do-what-it-says':
-        doSomethingElse();
-        break;
-    default:
-        console.log('Please input correct command!');
+var getMovie = function () {
+
+    inquirer.prompt([
+        {
+            type: "input",
+            message: "What movie would you like to search for??",
+            name: "movieS"
+        }
+    ])
+        .then(function (res) {
+
+            if (res.movieS === '') {
+                res.movieS = 'Mr.Nobody'
+            }
+
+            axios.get('http://www.omdbapi.com/?t=' + res.movieS + '&apikey=1de8dab0')
+                .then(function (OMDBres) {
+                    var movie = OMDBres.data;
+                    console.log(`${movie.Title}\n${movie.Released}\n${movie.imdbRating}\n${movie.Country}\n${movie.Language}\n${movie.Plot}\n${movie.Actors}\n`);
+                    runAgain();
+                })
+                .catch(function (error) {
+                    if (error.response) {
+                        // The request was made and the server responded with a status code
+                        // that falls out of the range of 2xx
+                        console.log("---------------Data---------------");
+                        console.log(error.response.data);
+                        console.log("---------------Status---------------");
+                        console.log(error.response.status);
+                        console.log("---------------Status---------------");
+                        console.log(error.response.headers);
+                    } else if (error.request) {
+                        // The request was made but no response was received
+                        // `error.request` is an object that comes back with details pertaining to the error that occurred.
+                        console.log(error.request);
+                    } else {
+                        // Something happened in setting up the request that triggered an Error
+                        console.log("Error", error.message);
+                    }
+                    console.log(error.config);
+
+                })
+        })
 }
+
+var getSong = function () {
+    inquirer.prompt([
+        {
+            type: "input",
+            message: "What song would you like to search for??",
+            name: "songS"
+        }
+    ])
+        .then(function (res) {
+
+            var spotify = new Spotify(keys.Spotify);
+
+            if (res.songS === '') {
+                res.songS = "The Sign";
+            }
+
+            spotify.search({ type: 'track', query: res.songS, limit: 1 })
+                .then(function (spotifyRes) {
+                    var song = spotifyRes.tracks.items[0];
+
+                    console.log(`Artist: ${song.album.artists[0].name}\nSong: ${song.name}\nOpen in Spotify: ${song.album.external_urls.spotify}\nAlbum: ${song.album.name}\n`);
+
+                    runAgain();
+                })
+                .catch(function (err) {
+                    if (err) throw err;
+                });
+        })
+}
+
+start();
